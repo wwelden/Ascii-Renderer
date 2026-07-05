@@ -1,7 +1,108 @@
+/* Feature-test macros, before any include: expose POSIX.1-2008 (clock_gettime,
+   nanosleep) under strict -std=c11, while keeping ISO C library additions like
+   snprintf visible on macOS, whose headers gate them on the requested level.
+   _DEFAULT_SOURCE covers glibc; _DARWIN_C_SOURCE covers macOS. */
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE 1
+#define _DARWIN_C_SOURCE 1
+
 #include "canvas.h"
+#include "render.h"
+#include "term.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+/* --- Phase 0 milestone: enter raw mode, draw a border, exit cleanly. --- */
+
+#define KEY_CTRL_C 0x03
+
+/* Move the cursor to a 1-based (row, col) position. */
+static void move_to(FILE *out, int row, int col) {
+    fprintf(out, "\x1b[%d;%dH", row, col);
+}
+
+/* Write a centered string on the given row, clipped to the interior of the
+   border (columns 2..cols-1). */
+static void put_centered(FILE *out, int row, int cols, const char *text) {
+    int len = (int)strlen(text);
+    int interior = cols - 2;
+    if (interior <= 0) {
+        return;
+    }
+    if (len > interior) {
+        len = interior;
+    }
+    move_to(out, row, 2 + (interior - len) / 2);
+    fwrite(text, 1, (size_t)len, out);
+}
+
+static void draw_frame(TermSize size) {
+    fputs("\x1b[2J", stdout); /* clear the (alternate) screen */
+
+    /* Border: corners '+', horizontal '-', vertical '|'. */
+    move_to(stdout, 1, 1);
+    fputc('+', stdout);
+    for (int x = 2; x < size.cols; ++x) {
+        fputc('-', stdout);
+    }
+    fputc('+', stdout);
+
+    for (int y = 2; y < size.rows; ++y) {
+        move_to(stdout, y, 1);
+        fputc('|', stdout);
+        move_to(stdout, y, size.cols);
+        fputc('|', stdout);
+    }
+
+    move_to(stdout, size.rows, 1);
+    fputc('+', stdout);
+    for (int x = 2; x < size.cols; ++x) {
+        fputc('-', stdout);
+    }
+    fputc('+', stdout);
+
+    char status[64];
+    snprintf(status, sizeof(status), "%d x %d", size.cols, size.rows);
+    put_centered(stdout, size.rows / 2, size.cols, "ascii-renderer / phase 0");
+    put_centered(stdout, size.rows / 2 + 1, size.cols, status);
+    put_centered(stdout, size.rows / 2 + 2, size.cols,
+                 "resize the window; press q to quit");
+
+    fflush(stdout);
+}
+
+static int run_border_demo(void) {
+    if (term_init() == -1) {
+        fprintf(stderr, "error: stdin/stdout must be a terminal\n");
+        return 1;
+    }
+
+    draw_frame(term_size());
+
+    for (;;) {
+        if (term_resized()) {
+            draw_frame(term_size());
+        }
+        unsigned char byte;
+        int n = term_read_byte(&byte);
+        if (n == -1) {
+            return 1; /* atexit handler restores the terminal */
+        }
+        if (n == 1 && (byte == 'q' || byte == 'Q' || byte == KEY_CTRL_C)) {
+            return 0;
+        }
+        /* Reads are non-blocking, so idle here instead of spinning the CPU.
+           ~15ms is a responsive poll for resize/quit without any real clock. */
+        struct timespec idle = {0, 15 * 1000000L};
+        nanosleep(&idle, NULL);
+    }
+}
+
+/* --- Legacy demo: radial gradient rendered through the canvas API. --- */
 
 #define CANVAS_WIDTH 320
 #define CANVAS_HEIGHT 200
@@ -23,7 +124,7 @@ static Color heat_color(double t) {
                      (unsigned char)(b * 255.0));
 }
 
-int main(void) {
+static int run_gradient_demo(void) {
     Canvas *canvas = canvas_create(CANVAS_WIDTH, CANVAS_HEIGHT);
     if (canvas == NULL) {
         fprintf(stderr, "error: failed to allocate canvas\n");
@@ -52,4 +153,150 @@ int main(void) {
     canvas_render_color(canvas, stdout);
     canvas_destroy(canvas);
     return 0;
+}
+
+/* --- Phase 1 demo: an animated scene driven by the diffing renderer. --- */
+
+#define TARGET_FPS 60
+#define NS_PER_SEC 1000000000LL
+
+/* Monotonic nanosecond clock for frame pacing and benchmarking. */
+static int64_t now_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * NS_PER_SEC + ts.tv_nsec;
+}
+
+/* Sleep until `deadline` (a now_ns() value), so frames land ~1/TARGET_FPS
+   apart. If we are already past the deadline, return immediately. */
+static void sleep_until(int64_t deadline) {
+    int64_t remaining = deadline - now_ns();
+    if (remaining <= 0) {
+        return;
+    }
+    struct timespec ts = {(time_t)(remaining / NS_PER_SEC),
+                          (long)(remaining % NS_PER_SEC)};
+    nanosleep(&ts, NULL);
+}
+
+/* Write a plain (uncolored) string into the canvas starting at (x, y). */
+static void put_text(Canvas *canvas, int x, int y, const char *text) {
+    for (int i = 0; text[i] != '\0'; ++i) {
+        canvas_put(canvas, x + i, y, text[i], color_rgb(220, 220, 220));
+    }
+}
+
+/* Draw one animation frame into `canvas`: a dim gradient backdrop with a
+   solid box bouncing across it. `frame` advances the box; the moving box is
+   what exercises the diff (only its leading/trailing edges change). */
+static void draw_scene(Canvas *canvas, int frame) {
+    int w = canvas->width;
+    int h = canvas->height;
+
+    /* Backdrop: a static horizontal gradient in cool blues. */
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            double t = w > 1 ? (double)x / (w - 1) : 0.0;
+            Color bg = color_rgb((unsigned char)(20 + t * 20),
+                                 (unsigned char)(20 + t * 40),
+                                 (unsigned char)(60 + t * 120));
+            canvas_put(canvas, x, y, '.', bg);
+        }
+    }
+
+    /* A bouncing box. Reflect its position off the walls using a triangle wave
+       over the available travel, so it never leaves the canvas. */
+    int bw = 10, bh = 5;
+    int span_x = (w - bw) > 0 ? (w - bw) : 1;
+    int span_y = (h - bh) > 0 ? (h - bh) : 1;
+    int px = frame % (2 * span_x);
+    int py = (frame / 2) % (2 * span_y);
+    if (px >= span_x) {
+        px = 2 * span_x - px;
+    }
+    if (py >= span_y) {
+        py = 2 * span_y - py;
+    }
+
+    Color box = color_rgb(255, 180, 40);
+    for (int y = 0; y < bh; ++y) {
+        for (int x = 0; x < bw; ++x) {
+            canvas_put(canvas, px + x, py + y, '#', box);
+        }
+    }
+}
+
+static int run_animation(void) {
+    if (term_init() == -1) {
+        fprintf(stderr, "error: stdin/stdout must be a terminal\n");
+        return 1;
+    }
+
+    TermSize size = term_size();
+    Renderer *renderer = renderer_create(size.cols, size.rows);
+    if (renderer == NULL) {
+        fprintf(stderr, "error: failed to allocate renderer\n");
+        return 1;
+    }
+
+    int64_t start = now_ns();
+    int64_t frame_ns = NS_PER_SEC / TARGET_FPS;
+    int64_t total_bytes = 0;
+    int frame = 0;
+    int running = 1;
+
+    while (running) {
+        int64_t deadline = start + (int64_t)(frame + 1) * frame_ns;
+
+        if (term_resized()) {
+            size = term_size();
+            renderer_resize(renderer, size.cols, size.rows);
+        }
+
+        Canvas *canvas = renderer_canvas(renderer);
+        draw_scene(canvas, frame);
+
+        /* Live HUD: elapsed FPS and bytes emitted last frame. */
+        double elapsed = (double)(now_ns() - start) / NS_PER_SEC;
+        double fps = elapsed > 0.0 ? frame / elapsed : 0.0;
+        char hud[80];
+        snprintf(hud, sizeof(hud), " frame %d  %.1f fps  q to quit ", frame,
+                 fps);
+        put_text(canvas, 1, 0, hud);
+
+        total_bytes += (int64_t)renderer_present(renderer, stdout);
+        ++frame;
+
+        sleep_until(deadline);
+
+        unsigned char byte;
+        int n = term_read_byte(&byte);
+        if (n == -1) {
+            running = 0;
+        } else if (n == 1 && (byte == 'q' || byte == 'Q' || byte == KEY_CTRL_C)) {
+            running = 0;
+        }
+    }
+
+    double elapsed = (double)(now_ns() - start) / NS_PER_SEC;
+    renderer_destroy(renderer);
+    term_shutdown();
+
+    /* Printed on the main screen after restore, so it survives the demo. */
+    printf("rendered %d frames in %.2fs = %.1f fps\n", frame, elapsed,
+           elapsed > 0.0 ? frame / elapsed : 0.0);
+    printf("emitted %lld bytes total = %.0f bytes/frame\n",
+           (long long)total_bytes,
+           frame > 0 ? (double)total_bytes / frame : 0.0);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--gradient") == 0) {
+        return run_gradient_demo();
+    }
+    if (argc > 1 && strcmp(argv[1], "--animate") == 0) {
+        return run_animation();
+    }
+    return run_border_demo();
 }
