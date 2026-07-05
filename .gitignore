@@ -1,0 +1,14 @@
+# Build output
+build/
+*.o
+*.d
+
+# Executables
+ascii-renderer
+*.out
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
+*.swp
