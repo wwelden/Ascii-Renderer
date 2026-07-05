@@ -11,7 +11,9 @@ BUILD   ?= debug
 ifeq ($(BUILD),release)
 CFLAGS  += -O2 -DNDEBUG
 else
-CFLAGS  += -O0 -g
+SANITIZE := -fsanitize=address,undefined -fno-omit-frame-pointer
+CFLAGS   += -O0 -g $(SANITIZE)
+LDFLAGS  += $(SANITIZE)
 endif
 
 SRC_DIR   := src

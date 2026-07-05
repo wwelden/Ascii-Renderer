@@ -1,7 +1,8 @@
 # ASCII Renderer
 
-A small C library and demo for drawing to a character grid and printing it to
-the terminal as ASCII art.
+A terminal renderer in C, built up in phases toward running Doom in a terminal.
+Currently: a raw-mode terminal session with signal-safe cleanup, plus a small
+canvas library for drawing to a character grid.
 
 ## Requirements
 
@@ -11,8 +12,8 @@ the terminal as ASCII art.
 ## Building
 
 ```bash
-make            # debug build (default)
-make BUILD=release   # optimized build
+make            # debug build (default): -O0 -g + AddressSanitizer/UBSan
+make BUILD=release   # optimized build, no sanitizers
 ```
 
 The binary is written to `build/ascii-renderer`.
@@ -20,13 +21,17 @@ The binary is written to `build/ascii-renderer`.
 ## Running
 
 ```bash
-make run
+make run             # or ./build/ascii-renderer
 ```
 
-or run the binary directly:
+The default program is the Phase 0 milestone: it switches to the alternate
+screen buffer, enters raw mode, hides the cursor, and draws a border sized to
+the terminal. Resizing the window redraws the border; `q` (or Ctrl-C) quits.
+The original terminal state is restored on any exit path — normal quit,
+`exit()`, or a fatal signal (SIGINT/SIGTERM/SIGSEGV/…).
 
 ```bash
-./build/ascii-renderer
+./build/ascii-renderer --gradient   # canvas demo: truecolor radial gradient
 ```
 
 ## Cleaning
@@ -40,13 +45,40 @@ make clean
 ```
 .
 ├── include/        # public headers
-│   └── canvas.h
+│   ├── canvas.h
+│   └── term.h
 ├── src/            # source files
 │   ├── canvas.c    # canvas / drawing primitives
-│   └── main.c      # demo entry point
+│   ├── term.c      # terminal lifecycle: raw mode, alt screen, resize, cleanup
+│   └── main.c      # entry point: border milestone + --gradient demo
 ├── Makefile
 └── README.md
 ```
+
+## The terminal API
+
+`term.h` manages the terminal session:
+
+| Function         | Description                                              |
+| ---------------- | -------------------------------------------------------- |
+| `term_init`      | Raw mode + alternate screen + hidden cursor; registers `atexit` and fatal-signal handlers |
+| `term_shutdown`  | Restore the original terminal state (also runs automatically at exit) |
+| `term_size`      | Current size via `ioctl(TIOCGWINSZ)`                     |
+| `term_resized`   | Poll-and-clear flag set by `SIGWINCH`                    |
+| `term_read_byte` | Read one byte from stdin with a ~100ms timeout           |
+
+Design notes (for the eventual "design" section):
+
+- **Signal-safe restore.** The restore path uses only async-signal-safe calls
+  (`write` of a single constant escape string, then `tcsetattr`), so the same
+  function runs from `atexit` and from SIGSEGV/SIGBUS handlers. Fatal signals
+  restore the terminal, reset the handler to `SIG_DFL`, and re-raise so the
+  exit status still reflects the signal.
+- **Raw mode with `ISIG` off.** Ctrl-C arrives as byte `0x03` and is handled
+  as a quit key in the main loop; the SIGINT handler still exists for
+  externally sent signals.
+- **Poll-style reads.** `VMIN=0, VTIME=1` makes `read()` return within 100ms,
+  so the loop notices `SIGWINCH` promptly without threads or `select()`.
 
 ## The canvas API
 
