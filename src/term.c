@@ -94,10 +94,13 @@ int term_init(void) {
     raw.c_iflag &= ~(tcflag_t)(IXON | ICRNL | BRKINT | INPCK | ISTRIP);
     raw.c_oflag &= ~(tcflag_t)OPOST;
     raw.c_cflag |= (tcflag_t)CS8;
-    /* Poll-style reads: return after 100ms even with no input, so the main
-       loop stays responsive to resize flags and can pace frames later. */
+    /* Non-blocking reads: return immediately whether or not a byte is ready.
+       Frame pacing is owned by the caller's monotonic clock (sleep_until), not
+       by read() -- VTIME's 100ms granularity cannot express a 60fps frame, and
+       a blocking read would cap the loop at VTIME's rate. Clockless callers
+       must add their own idle sleep to avoid busy-spinning. */
     raw.c_cc[VMIN] = 0;
-    raw.c_cc[VTIME] = 1;
+    raw.c_cc[VTIME] = 0;
 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
         return -1;
