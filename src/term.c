@@ -1,3 +1,11 @@
+/* Feature-test macros, before any include: expose POSIX.1-2008 (sigaction)
+   under strict -std=c11, while keeping the non-POSIX extensions this file
+   needs (SIGWINCH, TIOCGWINSZ / struct winsize) visible.
+   _DEFAULT_SOURCE covers glibc; _DARWIN_C_SOURCE covers macOS. */
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE 1
+#define _DARWIN_C_SOURCE 1
+
 #include "term.h"
 
 #include <errno.h>
