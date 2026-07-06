@@ -9,6 +9,7 @@
 #include "canvas.h"
 #include "framebuffer.h"
 #include "render.h"
+#include "snake.h"
 #include "term.h"
 
 #include <math.h>
@@ -327,12 +328,160 @@ static int run_image(const char *path) {
     return 0;
 }
 
+/* --- Phase 3 demo: Snake, driven by input + the diffing renderer. --- */
+
+#define SNAKE_TICKS_PER_SEC 10
+
+/* Drain all bytes currently buffered on stdin into `buf` (reads are
+   non-blocking, so this never stalls). Returns the count read. */
+static int drain_input(unsigned char *buf, int max) {
+    int n = 0;
+    unsigned char byte;
+    while (n < max && term_read_byte(&byte) == 1) {
+        buf[n++] = byte;
+    }
+    return n;
+}
+
+/* Paint a grid cell as two terminal columns wide (so cells look square despite
+   the ~2:1 cell aspect), offset by one row to leave the HUD on row 0. */
+static void put_grid_cell(Canvas *c, int gx, int gy, char ch, Color color) {
+    canvas_put(c, gx * 2, gy + 1, ch, color);
+    canvas_put(c, gx * 2 + 1, gy + 1, ch, color);
+}
+
+/* Draw the whole game frame into the renderer's canvas: HUD, food, and snake,
+   plus a game-over overlay when dead. */
+static void draw_game(Canvas *c, const Snake *s) {
+    canvas_clear(c, ' ');
+
+    char hud[80];
+    snprintf(hud, sizeof(hud), " snake  score %d   wasd/arrows to steer, q quits ",
+             s->score);
+    put_text(c, 1, 0, hud);
+
+    put_grid_cell(c, s->food.x, s->food.y, '@', color_rgb(230, 60, 60));
+
+    for (int i = 0; i < s->length; ++i) {
+        /* Head brighter than the body for legibility. */
+        Color col = (i == 0) ? color_rgb(180, 255, 140) : color_rgb(60, 200, 90);
+        put_grid_cell(c, s->body[i].x, s->body[i].y, '#', col);
+    }
+
+    if (!s->alive) {
+        char over[80];
+        snprintf(over, sizeof(over), " GAME OVER - score %d - r restarts, q quits ",
+                 s->score);
+        put_text(c, (c->width - (int)strlen(over)) / 2, c->height / 2, over);
+    }
+}
+
+static int run_snake(void) {
+    if (term_init() == -1) {
+        fprintf(stderr, "error: stdin/stdout must be a terminal\n");
+        return 1;
+    }
+
+    TermSize size = term_size();
+    Renderer *renderer = renderer_create(size.cols, size.rows);
+    if (renderer == NULL) {
+        fprintf(stderr, "error: failed to allocate renderer\n");
+        return 1;
+    }
+
+    /* Grid is half as wide (2 columns per cell) and one row shorter (HUD). */
+    int gw = size.cols / 2;
+    int gh = size.rows - 1;
+    Snake *snake = snake_create(gw, gh, (unsigned)now_ns());
+    if (snake == NULL) {
+        fprintf(stderr, "error: terminal too small for a game\n");
+        return 1;
+    }
+
+    int64_t start = now_ns();
+    int64_t tick_ns = NS_PER_SEC / SNAKE_TICKS_PER_SEC;
+    int64_t tick = 0;
+    int running = 1;
+
+    while (running) {
+        int64_t deadline = start + (tick + 1) * tick_ns;
+
+        /* Rebuild the field on resize (the grid dimensions change). */
+        if (term_resized()) {
+            size = term_size();
+            renderer_resize(renderer, size.cols, size.rows);
+            gw = size.cols / 2;
+            gh = size.rows - 1;
+            snake_destroy(snake);
+            snake = snake_create(gw, gh, (unsigned)now_ns());
+            if (snake == NULL) {
+                running = 0;
+                break;
+            }
+        }
+
+        unsigned char buf[32];
+        int n = drain_input(buf, (int)sizeof(buf));
+        for (int i = 0; i < n; ++i) {
+            unsigned char byte = buf[i];
+            if (byte == 0x1b && i + 2 < n && buf[i + 1] == '[') {
+                switch (buf[i + 2]) {
+                    case 'A': snake_turn(snake, DIR_UP); break;
+                    case 'B': snake_turn(snake, DIR_DOWN); break;
+                    case 'C': snake_turn(snake, DIR_RIGHT); break;
+                    case 'D': snake_turn(snake, DIR_LEFT); break;
+                }
+                i += 2;
+            } else if (byte == 'q' || byte == 'Q' || byte == KEY_CTRL_C) {
+                running = 0;
+            } else if (byte == 'w' || byte == 'W') {
+                snake_turn(snake, DIR_UP);
+            } else if (byte == 's' || byte == 'S') {
+                snake_turn(snake, DIR_DOWN);
+            } else if (byte == 'a' || byte == 'A') {
+                snake_turn(snake, DIR_LEFT);
+            } else if (byte == 'd' || byte == 'D') {
+                snake_turn(snake, DIR_RIGHT);
+            } else if ((byte == 'r' || byte == 'R') && !snake->alive) {
+                snake_destroy(snake);
+                snake = snake_create(gw, gh, (unsigned)now_ns());
+                if (snake == NULL) {
+                    running = 0;
+                    break;
+                }
+            }
+        }
+        if (!running) {
+            break;
+        }
+
+        snake_step(snake); /* no-op while dead: the frame freezes on game over */
+
+        draw_game(renderer_canvas(renderer), snake);
+        renderer_present(renderer, stdout);
+
+        ++tick;
+        sleep_until(deadline);
+    }
+
+    int final_score = snake ? snake->score : 0;
+    snake_destroy(snake);
+    renderer_destroy(renderer);
+    term_shutdown();
+
+    printf("snake: final score %d\n", final_score);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--gradient") == 0) {
         return run_gradient_demo();
     }
     if (argc > 1 && strcmp(argv[1], "--animate") == 0) {
         return run_animation();
+    }
+    if (argc > 1 && strcmp(argv[1], "--snake") == 0) {
+        return run_snake();
     }
     if (argc > 2 && strcmp(argv[1], "--image") == 0) {
         return run_image(argv[2]);
