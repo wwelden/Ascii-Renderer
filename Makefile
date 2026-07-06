@@ -2,7 +2,7 @@
 
 CC      ?= cc
 CSTD    ?= c11
-CFLAGS  ?= -std=$(CSTD) -Wall -Wextra -Wpedantic -Iinclude
+CFLAGS  ?= -std=$(CSTD) -Wall -Wextra -Wpedantic -Iinclude -Ithird_party
 LDFLAGS ?=
 LDLIBS  ?= -lm
 
@@ -33,6 +33,9 @@ $(BIN): $(OBJS)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+# Vendored stb_image: compile without our strict warnings (it is not our code).
+$(BUILD_DIR)/stb_image_impl.o: CFLAGS := $(filter-out -Wall -Wextra -Wpedantic,$(CFLAGS)) -w
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
