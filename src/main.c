@@ -7,6 +7,7 @@
 #define _DARWIN_C_SOURCE 1
 
 #include "canvas.h"
+#include "framebuffer.h"
 #include "render.h"
 #include "term.h"
 
@@ -291,12 +292,50 @@ static int run_animation(void) {
     return 0;
 }
 
+/* --- Phase 2 demo: load an image and print it with the half-block trick. --- */
+
+static int run_image(const char *path) {
+    Framebuffer *img = framebuffer_load(path);
+    if (img == NULL) {
+        fprintf(stderr, "error: could not load image '%s'\n", path);
+        return 1;
+    }
+
+    /* Fit within the terminal, preserving aspect. Each text row is two pixel
+       rows tall, so the height budget is (rows - 1) * 2 pixels; leave one row
+       so the shell prompt does not scroll the top of the image away. */
+    TermSize size = term_size();
+    int max_w = size.cols;
+    int max_h = (size.rows - 1) * 2;
+    double sx = (double)max_w / img->width;
+    double sy = (double)max_h / img->height;
+    double scale = sx < sy ? sx : sy;
+    int dw = (int)(img->width * scale);
+    int dh = (int)(img->height * scale);
+    if (dw < 1) dw = 1;
+    if (dh < 1) dh = 1;
+
+    Framebuffer *scaled = framebuffer_scaled(img, dw, dh);
+    framebuffer_destroy(img);
+    if (scaled == NULL) {
+        fprintf(stderr, "error: could not scale image\n");
+        return 1;
+    }
+
+    framebuffer_render_halfblocks(scaled, stdout);
+    framebuffer_destroy(scaled);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--gradient") == 0) {
         return run_gradient_demo();
     }
     if (argc > 1 && strcmp(argv[1], "--animate") == 0) {
         return run_animation();
+    }
+    if (argc > 2 && strcmp(argv[1], "--image") == 0) {
+        return run_image(argv[2]);
     }
     return run_border_demo();
 }
