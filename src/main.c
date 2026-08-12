@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -328,6 +329,94 @@ static int run_image(const char *path) {
     return 0;
 }
 
+/* --- Phase 4 demo: a framebuffer animation pushed through render_frame(),
+       the library entry point an external engine (eventually doomgeneric)
+       will drive. --- */
+
+/* Draw one frame of an animated full-screen pattern into `fb`. Every pixel
+   should change every frame: this is the diff renderer's worst case, so the
+   fps this demo reports is a *floor*, not a typical figure. `frame` is the
+   frame counter; use it as the time axis. */
+static void draw_plasma(Framebuffer *fb, int frame) {
+    double t = frame * 0.05;
+    for (int y = 0; y < fb->height; ++y) {
+        for (int x = 0; x < fb->width; ++x) {
+            /* Three interfering sine waves; t shifts all of them, so no pixel
+               repeats its color on consecutive frames. v spans [-3, 3]. */
+            double v = sin(x * 0.10 + t) + sin(y * 0.13 - t) +
+                       sin((x + y) * 0.07 + t);
+            /* Map v onto RGB with a 2π/3 phase offset per channel, keeping
+               each channel inside [0, 255] by construction. */
+            unsigned char r = (unsigned char)(127.5 + 127.5 * sin(v));
+            unsigned char g = (unsigned char)(127.5 + 127.5 * sin(v + 2.094));
+            unsigned char b = (unsigned char)(127.5 + 127.5 * sin(v + 4.189));
+            framebuffer_set(fb, x, y, color_rgb(r, g, b));
+        }
+    }
+}
+
+static int run_pixels(int max_frames) {
+    if (term_init() == -1) {
+        fprintf(stderr, "error: stdin/stdout must be a terminal\n");
+        return 1;
+    }
+
+    /* Two pixel rows per terminal cell row. */
+    TermSize size = term_size();
+    Framebuffer *fb = framebuffer_create(size.cols, size.rows * 2);
+    PixelRenderer *pr = pixel_renderer_create(size.cols, size.rows * 2);
+    if (fb == NULL || pr == NULL) {
+        fprintf(stderr, "error: failed to allocate pixel renderer\n");
+        return 1;
+    }
+
+    int64_t start = now_ns();
+    int64_t frame_ns = NS_PER_SEC / TARGET_FPS;
+    int64_t total_bytes = 0;
+    int frame = 0;
+    int running = 1;
+
+    while (running && (max_frames <= 0 || frame < max_frames)) {
+        int64_t deadline = start + (int64_t)(frame + 1) * frame_ns;
+
+        if (term_resized()) {
+            size = term_size();
+            framebuffer_destroy(fb);
+            fb = framebuffer_create(size.cols, size.rows * 2);
+            if (fb == NULL) {
+                break;
+            }
+            /* render_frame follows the new framebuffer size by itself. */
+        }
+
+        draw_plasma(fb, frame);
+        total_bytes += (int64_t)render_frame(pr, fb, stdout);
+        ++frame;
+
+        sleep_until(deadline);
+
+        unsigned char byte;
+        int n = term_read_byte(&byte);
+        if (n == -1) {
+            running = 0;
+        } else if (n == 1 && (byte == 'q' || byte == 'Q' || byte == KEY_CTRL_C)) {
+            running = 0;
+        }
+    }
+
+    double elapsed = (double)(now_ns() - start) / NS_PER_SEC;
+    framebuffer_destroy(fb);
+    pixel_renderer_destroy(pr);
+    term_shutdown();
+
+    printf("rendered %d frames in %.2fs = %.1f fps\n", frame, elapsed,
+           elapsed > 0.0 ? frame / elapsed : 0.0);
+    printf("emitted %lld bytes total = %.0f bytes/frame\n",
+           (long long)total_bytes,
+           frame > 0 ? (double)total_bytes / frame : 0.0);
+    return 0;
+}
+
 /* --- Phase 3 demo: Snake, driven by input + the diffing renderer. --- */
 
 #define SNAKE_TICKS_PER_SEC 10
@@ -482,6 +571,10 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--snake") == 0) {
         return run_snake();
+    }
+    if (argc > 1 && strcmp(argv[1], "--pixels") == 0) {
+        /* Optional second arg: stop after N frames (for benchmarking). */
+        return run_pixels(argc > 2 ? atoi(argv[2]) : 0);
     }
     if (argc > 2 && strcmp(argv[1], "--image") == 0) {
         return run_image(argv[2]);
