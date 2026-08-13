@@ -1,8 +1,8 @@
 # ASCII Renderer
 
 A terminal renderer in C, built up in phases toward running Doom in a terminal.
-Currently: a raw-mode terminal session with signal-safe cleanup, plus a small
-canvas library for drawing to a character grid.
+Phase 5 is here: `make doom` builds a doomgeneric port that plays Doom in the
+terminal at 35fps through the diffing half-block renderer.
 
 ## Requirements
 
@@ -33,6 +33,35 @@ The original terminal state is restored on any exit path — normal quit,
 ```bash
 ./build/ascii-renderer --gradient   # canvas demo: truecolor radial gradient
 ```
+
+## Doom (Phase 5)
+
+```bash
+make doom                            # builds build/ascii-doom
+./build/ascii-doom -iwad doom1.wad   # any Doom IWAD works; shareware doom1.wad is free
+```
+
+The port renders Doom's native 320×200 frame as half-block cells
+(320 columns × 100 rows), scaled to fit smaller terminals, paced at the
+engine's 35fps tic rate. Arrow keys move/turn, Enter/Escape drive the menus,
+Ctrl-C force-quits (the terminal is restored on every exit path).
+
+Design notes (Phase 5):
+
+- **The engine owns the loop.** doomgeneric inverts the phase 3 structure:
+  instead of our loop calling a `game_step()`, Doom calls our six `DG_*`
+  callbacks. The whole port is `src/doom/doomgeneric_ascii.c`; the renderer is
+  reused unmodified through the `render_frame()` API built in phase 4.
+- **Deferred session entry.** Raw mode + alternate screen are entered on the
+  *first frame*, not at startup, so the engine's boot log and fatal errors
+  (missing WAD, bad args) stay readable on the normal screen. Lesson learned:
+  the engine polls `DG_GetKey` before the first frame, so key reads must
+  report "no input" until the session is open — the tty is still canonical,
+  and a blocking `read()` there hangs the boot.
+- **Key-up synthesis.** A tty delivers key-down bytes only. Presses are
+  reported when a byte arrives; releases are synthesized after the key's byte
+  stream has been quiet for ~500ms (longer than the OS initial autorepeat
+  delay, or held keys stutter).
 
 ## Cleaning
 
