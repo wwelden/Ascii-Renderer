@@ -12,3 +12,8 @@ ascii-renderer
 .vscode/
 .idea/
 *.swp
+
+# Doom runtime data (game assets and files the game writes at runtime)
+*.wad
+.savegame/
+default.cfg
