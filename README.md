@@ -1,4 +1,7 @@
 <img width="3416" height="2220" alt="CleanShot 2026-10-20 at 8 12 19 PM@2x" src="https://github.com/user-attachments/assets/5fa36a07-3040-4591-9944-fb207ff0cafc" />
+
+
+
 # ASCII Renderer
 
 A terminal renderer in C, built up in phases toward running Doom in a terminal.
