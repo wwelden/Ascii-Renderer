@@ -237,7 +237,11 @@ void DG_SetWindowTitle(const char *title) {
    moves, a weapon re-selects) and a duplicate press of a held game key is a
    no-op, whereas a release would end the engine's event drain for that tic
    (i_input.c breaks after key-ups) and stall the press a frame. A held key
-   hits this once, at its initial repeat delay, harmlessly. */
+   hits this once, at its initial repeat delay -- harmless for movement, fire
+   and menu arrows, but not for keys whose every press is a one-shot action
+   (Esc opens/closes the menu, Tab toggles the automap, Enter selects): a
+   slightly long press would undo itself or select on the next menu too.
+   Those keys skip re-tap detection (is_one_shot_key). */
 #define KEY_HOLD_MS 500
 #define KEY_REPEAT_RELEASE_MS 150
 #define KEY_RETAP_GAP_MS 120
@@ -259,11 +263,18 @@ static void queue_event(int pressed, unsigned char key) {
     ++g_queue_write;
 }
 
+/* Keys whose every key-down is a one-shot toggle or selection; see above. */
+static int is_one_shot_key(unsigned char key) {
+    return key == KEY_ESCAPE || key == KEY_TAB || key == KEY_ENTER ||
+           key == KEY_BACKSPACE;
+}
+
 static void key_seen(unsigned char key, uint32_t now_ms) {
     if (g_key_state[key] == KEY_UP) {
         g_key_state[key] = KEY_PRESSED;
         queue_event(1, key);
-    } else if (now_ms - g_last_seen_ms[key] > KEY_RETAP_GAP_MS) {
+    } else if (now_ms - g_last_seen_ms[key] > KEY_RETAP_GAP_MS &&
+               !is_one_shot_key(key)) {
         /* Too slow for autorepeat: a new tap (or a held key's first repeat). */
         queue_event(1, key);
         g_key_state[key] = KEY_PRESSED;
