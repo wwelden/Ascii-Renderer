@@ -217,21 +217,41 @@ void DG_SetWindowTitle(const char *title) {
 /* A terminal delivers key-down bytes only -- there is no key-up event, and a
    held key just autorepeats. Doom needs press/release pairs. The standard
    trick: report a press when a byte arrives, remember when each key was last
-   seen, and synthesize the release once the byte stream for that key has been
-   quiet for longer than the autorepeat gap. KEY_HOLD_MS must exceed the OS's
-   *initial* repeat delay (~400ms on stock macOS) or a held key stutters
-   press/release/press before autorepeat kicks in. The cost of the margin:
-   every input lingers ~half a second after the finger lifts. */
-#define KEY_HOLD_MS 500
+   seen, and synthesize the release once the byte stream for that key has gone
+   quiet. How long "quiet" must be depends on what we know about the key:
 
-#define KEYQUEUE_SIZE 32
+   - Just pressed (KEY_PRESSED): the next byte, if the key is held, comes after
+     the OS's *initial* repeat delay (~400ms on stock macOS), so the release
+     waits KEY_HOLD_MS. Any shorter and a held key stutters
+     press/release/press before autorepeat kicks in.
+   - Autorepeating (KEY_REPEATING): bytes now arrive every repeat interval
+     (~30-90ms), so silence longer than KEY_REPEAT_RELEASE_MS means the finger
+     lifted. Without this, every held turn or step carried on for half a
+     second after release -- turning overshot its target by ~50 degrees.
+
+   A byte that arrives for a key already down, but after a gap longer than any
+   repeat interval (KEY_RETAP_GAP_MS), is a fresh tap, not a repeat: report
+   another press. Otherwise quick taps of the same key (menu navigation,
+   pistol shots) inside the hold window were swallowed. It is a press alone,
+   with no release before it: the engine acts on every key-down (the menu
+   moves, a weapon re-selects) and a duplicate press of a held game key is a
+   no-op, whereas a release would end the engine's event drain for that tic
+   (i_input.c breaks after key-ups) and stall the press a frame. A held key
+   hits this once, at its initial repeat delay, harmlessly. */
+#define KEY_HOLD_MS 500
+#define KEY_REPEAT_RELEASE_MS 150
+#define KEY_RETAP_GAP_MS 120
+
+enum { KEY_UP = 0, KEY_PRESSED, KEY_REPEATING };
+
+#define KEYQUEUE_SIZE 512 /* > worst case per pump: 64 bytes + 256 releases */
 
 static unsigned short g_queue[KEYQUEUE_SIZE]; /* (pressed << 8) | doom key */
 static unsigned int g_queue_write;
 static unsigned int g_queue_read;
 
 static uint32_t g_last_seen_ms[256];
-static unsigned char g_key_down[256];
+static unsigned char g_key_state[256]; /* KEY_UP / KEY_PRESSED / KEY_REPEATING */
 
 static void queue_event(int pressed, unsigned char key) {
     g_queue[g_queue_write % KEYQUEUE_SIZE] =
@@ -240,9 +260,15 @@ static void queue_event(int pressed, unsigned char key) {
 }
 
 static void key_seen(unsigned char key, uint32_t now_ms) {
-    if (!g_key_down[key]) {
-        g_key_down[key] = 1;
+    if (g_key_state[key] == KEY_UP) {
+        g_key_state[key] = KEY_PRESSED;
         queue_event(1, key);
+    } else if (now_ms - g_last_seen_ms[key] > KEY_RETAP_GAP_MS) {
+        /* Too slow for autorepeat: a new tap (or a held key's first repeat). */
+        queue_event(1, key);
+        g_key_state[key] = KEY_PRESSED;
+    } else {
+        g_key_state[key] = KEY_REPEATING;
     }
     g_last_seen_ms[key] = now_ms;
 }
@@ -331,8 +357,14 @@ static void pump_input(void) {
     }
 
     for (int k = 0; k < 256; ++k) {
-        if (g_key_down[k] && now_ms - g_last_seen_ms[k] > KEY_HOLD_MS) {
-            g_key_down[k] = 0;
+        if (g_key_state[k] == KEY_UP) {
+            continue;
+        }
+        uint32_t quiet_ms = g_key_state[k] == KEY_REPEATING
+                                ? KEY_REPEAT_RELEASE_MS
+                                : KEY_HOLD_MS;
+        if (now_ms - g_last_seen_ms[k] > quiet_ms) {
+            g_key_state[k] = KEY_UP;
             queue_event(0, (unsigned char)k);
         }
     }
