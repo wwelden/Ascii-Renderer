@@ -24,7 +24,7 @@ SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all run clean web serve doom
+.PHONY: all run clean web web-doom serve doom
 
 all: $(BIN)
 
@@ -44,7 +44,8 @@ run: $(BIN)
 	./$(BIN)
 
 clean:
-	rm -rf $(BUILD_DIR) $(WEB_OUT) $(WEB_OUT:.js=.wasm)
+	rm -rf $(BUILD_DIR) $(WEB_OUT) $(WEB_OUT:.js=.wasm) \
+	    $(WEB_DOOM_OUT) $(WEB_DOOM_OUT:.js=.wasm) $(WEB_DOOM_OUT:.js=.data)
 
 # --- WebAssembly build (needs Emscripten's emcc on PATH) ---
 # The browser has no tty, so src/term.c is swapped for web/term_web.c, which
@@ -123,6 +124,33 @@ $(DOOM_BUILD)/port/stb_image_impl.o: $(SRC_DIR)/stb_image_impl.c | $(DOOM_BUILD)
 
 $(DOOM_BUILD):
 	mkdir -p $(DOOM_BUILD)/engine $(DOOM_BUILD)/port
+
+# --- WebAssembly Doom (needs emcc; web/build.sh fetches the shareware WAD) --
+# The same port as `make doom` with the same tty swap as `make web`: term.c
+# is replaced by web/term_web.c, and the engine plus port compile in one emcc
+# invocation. The IWAD is baked into ascii-doom.data by Emscripten's
+# --preload-file and appears to the engine as /doom1.wad in MEMFS.
+# ASYNCIFY_STACK_SIZE is generous because the pacing sleep unwinds from deep
+# inside the engine's render path, not from a shallow main loop.
+WEB_DOOM_OUT  := web/public/ascii-doom.js
+WEB_DOOM_SRCS := web/term_web.c $(SRC_DIR)/doom/doomgeneric_ascii.c \
+                 $(SRC_DIR)/canvas.c $(SRC_DIR)/framebuffer.c \
+                 $(SRC_DIR)/render.c $(SRC_DIR)/stb_image_impl.c
+WEB_DOOM_ENGINE_SRCS := $(addprefix $(DOOM_DIR)/, \
+    $(addsuffix .c, $(DOOM_ENGINE_NAMES)))
+# -std=gnu11 (overrides EMFLAGS' c11): strict ISO mode sets __STRICT_ANSI__,
+# under which Emscripten's musl headers hide POSIX functions the vendored
+# engine calls (strdup); glibc and macOS expose them by default, so only the
+# wasm build ever noticed.
+WEB_DOOM_FLAGS := $(EMFLAGS) -std=gnu11 -w -DNDEBUG -I$(DOOM_DIR) $(DOOM_DEFS) \
+    -sEXPORT_NAME=createAsciiDoom -sASYNCIFY_STACK_SIZE=1048576 \
+    -sSTACK_SIZE=4194304 --preload-file doom1.wad@/doom1.wad
+
+web-doom: $(WEB_DOOM_OUT)
+
+$(WEB_DOOM_OUT): $(WEB_DOOM_SRCS) $(WEB_DOOM_ENGINE_SRCS) \
+                 $(wildcard include/*.h) doom1.wad
+	$(EMCC) $(WEB_DOOM_FLAGS) $(WEB_DOOM_SRCS) $(WEB_DOOM_ENGINE_SRCS) -o $@ -lm
 
 -include $(DOOM_DEPS)
 

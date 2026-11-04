@@ -15,6 +15,7 @@
       <p>A terminal renderer in C — double-buffered, diffing, zero-alloc hot loop —
          compiled to WebAssembly and running in the terminal below.</p>
       <nav aria-label="Demos">
+        <button data-cmd="doom">doom</button>
         <button data-cmd="snake">snake</button>
         <button data-cmd="plasma">plasma</button>
         <button data-cmd="animate">animate</button>
@@ -32,6 +33,10 @@
       <button data-key="&#x1b;[C" aria-label="Right">→</button>
       <button data-key="r">r</button>
       <button data-key="q">q</button>
+      <button data-key="f" aria-label="Fire">fire</button>
+      <button data-key="e" aria-label="Use / open doors">use</button>
+      <button data-key="&#x0d;" aria-label="Enter / confirm">enter</button>
+      <button data-key="&#x1b;" aria-label="Menu (Escape)">esc</button>
     </div>
   </main>
 
@@ -39,6 +44,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.js"></script>
   <script src="ascii-renderer.js"></script>
+  <script src="ascii-doom.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

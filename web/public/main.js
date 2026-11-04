@@ -61,7 +61,12 @@
 
   // ---------------------------------------------------------------- programs
 
+  // `factory` names the global Emscripten module factory; demos share one
+  // binary (createAsciiRenderer), doom is its own (createAsciiDoom, which
+  // also pulls in ascii-doom.data, the preloaded shareware IWAD).
   const PROGRAMS = {
+    doom:    { args: ["-iwad", "/doom1.wad"], factory: "createAsciiDoom",
+               about: "DOOM (1993, shareware) — arrows turn/move, wasd move/strafe, f fire, e use, Enter/Esc menus" },
     snake:   { args: ["--snake"],   about: "play snake (wasd / arrows, r restarts, q quits)" },
     plasma:  { args: ["--pixels"],  about: "full-screen truecolor plasma via render_frame() — the diff's worst case" },
     animate: { args: ["--animate"], about: "bouncing box over a gradient, with a live fps HUD" },
@@ -109,6 +114,12 @@
 
   function runProgram(name) {
     const prog = PROGRAMS[name];
+    const factory = window[prog.factory || "createAsciiRenderer"];
+    if (typeof factory !== "function") {
+      term.writeln(name + ": module not loaded (" + (prog.factory || "createAsciiRenderer") + " missing)");
+      term.write(PROMPT);
+      return;
+    }
     running = true;
     input = [];
     resized = false;
@@ -125,7 +136,7 @@
       term.focus();
     };
 
-    createAsciiRenderer({
+    factory({
       arguments: prog.args.slice(),
       stdin: () => null,
       stdout: pushOut,
@@ -190,6 +201,8 @@
     // etc., which must not be dispatched as programs.
     if (Object.hasOwn(PROGRAMS, cmd)) { runProgram(cmd); return true; }
 
+    if (cmd === "./ascii-doom" || cmd === "ascii-doom") { runProgram("doom"); return true; }
+
     if (cmd === "./ascii-renderer" || cmd === "ascii-renderer") {
       const flag = rest[0] || "";
       if (Object.hasOwn(FLAG_TO_PROGRAM, flag)) { runProgram(FLAG_TO_PROGRAM[flag]); return true; }
@@ -203,7 +216,7 @@
       case "about": case "cat": about(); break;
       case "clear": term.clear(); break;
       case "ls":
-        term.writeln("\x1b[1;32mascii-renderer\x1b[0m  README.md  Makefile  \x1b[1;34minclude/\x1b[0m  \x1b[1;34msrc/\x1b[0m  \x1b[1;34mweb/\x1b[0m");
+        term.writeln("\x1b[1;32mascii-renderer\x1b[0m  \x1b[1;32mascii-doom\x1b[0m  doom1.wad  README.md  Makefile  \x1b[1;34minclude/\x1b[0m  \x1b[1;34msrc/\x1b[0m  \x1b[1;34mweb/\x1b[0m");
         break;
       case "exit": term.writeln("nice try — there is nowhere to go"); break;
       case "sudo": term.writeln("guest is not in the sudoers file. This incident will be reported."); break;

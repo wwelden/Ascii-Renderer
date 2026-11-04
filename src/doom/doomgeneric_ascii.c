@@ -24,6 +24,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include "doomgeneric.h"
 #include "doomkeys.h"
 
@@ -50,8 +54,14 @@ uint32_t DG_GetTicksMs(void) {
 }
 
 void DG_SleepMs(uint32_t ms) {
+#ifdef __EMSCRIPTEN__
+    /* nanosleep busy-waits in wasm; emscripten_sleep (ASYNCIFY) yields to the
+       browser event loop instead, which is what keeps the tab responsive. */
+    emscripten_sleep(ms);
+#else
     struct timespec ts = {(time_t)(ms / 1000), (long)(ms % 1000) * 1000000L};
     nanosleep(&ts, NULL);
+#endif
 }
 
 /* --- Video --------------------------------------------------------------- */
@@ -197,6 +207,14 @@ void DG_DrawFrame(void) {
        here caps the whole loop at 35fps without touching engine code. */
     g_next_frame_ns += NS_PER_SEC / TARGET_FPS;
     int64_t remaining = g_next_frame_ns - now_ns();
+#ifdef __EMSCRIPTEN__
+    /* Always yield, even when behind schedule: this sleep is the loop's only
+       return to the browser event loop, and skipping it would hang the tab. */
+    emscripten_sleep(remaining > 0 ? (unsigned)(remaining / 1000000LL) : 0);
+    if (remaining <= 0) {
+        g_next_frame_ns = now_ns(); /* fell behind: resync, don't spiral */
+    }
+#else
     if (remaining > 0) {
         struct timespec ts = {(time_t)(remaining / NS_PER_SEC),
                               (long)(remaining % NS_PER_SEC)};
@@ -204,6 +222,7 @@ void DG_DrawFrame(void) {
     } else {
         g_next_frame_ns = now_ns(); /* fell behind: resync, don't spiral */
     }
+#endif
 }
 
 void DG_SetWindowTitle(const char *title) {

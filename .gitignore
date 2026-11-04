@@ -13,9 +13,12 @@ ascii-renderer
 .idea/
 *.swp
 
-# WebAssembly build output (built by `make web` / on Vercel)
+# WebAssembly build output (built by `make web` / `make web-doom` / on Vercel)
 web/public/ascii-renderer.js
 web/public/ascii-renderer.wasm
+web/public/ascii-doom.js
+web/public/ascii-doom.wasm
+web/public/ascii-doom.data
 .emsdk/
 web/smoke.png
 node_modules/
@@ -24,3 +27,9 @@ node_modules/
 *.wad
 .savegame/
 default.cfg
+
+# Vercel project link
+.vercel
+
+# Local Claude Code dev-server config
+.claude/
