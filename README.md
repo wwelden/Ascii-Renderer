@@ -105,7 +105,10 @@ Design notes (Phase 5):
 
 The same C code compiles to WebAssembly with [Emscripten](https://emscripten.org)
 and runs inside an [xterm.js](https://xtermjs.org) terminal on a static page,
-with a small fake shell in front of it (`help`, `snake`, `plasma`, ...).
+with a small fake shell in front of it (`help`, `snake`, `plasma`, ...). The
+shell ships a read-only replica of this repository, so `ls -la`, `cd`, `cat`,
+and tab completion all work — along with a handful of unlisted commands left
+as easter eggs.
 
 ```bash
 make web      # needs emcc on PATH; writes web/public/ascii-renderer.{js,wasm}
