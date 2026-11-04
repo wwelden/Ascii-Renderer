@@ -13,13 +13,17 @@
    page routes stdout bytes straight into xterm.js. The enter/leave sequences
    below go through stdout too, so they stay ordered with frame output.
 
-   Raw mode, signals, and atexit restoration have no browser equivalent and
-   are not needed: xterm.js already delivers every keystroke unbuffered. */
+   Raw mode and signal handlers have no browser equivalent and are not
+   needed: xterm.js already delivers every keystroke unbuffered. The atexit()
+   restore is kept, because demos (e.g. the border milestone) return from
+   main() without calling term_shutdown() and rely on it to leave the
+   alternate screen. The build uses -sEXIT_RUNTIME=1 so atexit handlers run. */
 
 #include "term.h"
 
 #include <emscripten.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define SEQ_ENTER "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H" /* alt screen, hide cursor, clear */
 #define SEQ_LEAVE "\x1b[0m\x1b[?25h\x1b[?1049l"       /* reset attrs, show cursor, main screen */
@@ -47,6 +51,11 @@ int term_init(void) {
         return 0;
     }
     g_term_active = 1;
+    static int registered = 0;
+    if (!registered) {
+        registered = 1;
+        atexit(term_shutdown);
+    }
     fputs(SEQ_ENTER, stdout);
     fflush(stdout);
     return 0;
