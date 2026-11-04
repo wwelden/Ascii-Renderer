@@ -28,16 +28,33 @@ fi
 # freely redistributable shareware episode, pinned by hash. A doom1.wad
 # already on disk (a local checkout) is used as-is.
 WAD_SHA256="1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771"
-WAD_URL="https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad"
-if [ ! -f doom1.wad ]; then
-  echo "fetching shareware doom1.wad..."
-  curl -fsSL --retry 3 -o doom1.wad.tmp "$WAD_URL"
+# Mirrors are tried in order; each download must match the pinned hash.
+# (The slitaz mirror served this file for years, then 404ed mid-2026 —
+# hence the list.)
+WAD_URLS="
+https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad
+https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad
+"
+wad_ok() {
   if command -v sha256sum >/dev/null 2>&1; then
-    echo "$WAD_SHA256  doom1.wad.tmp" | sha256sum -c -
+    echo "$WAD_SHA256  $1" | sha256sum -c - >/dev/null 2>&1
   else
-    echo "$WAD_SHA256  doom1.wad.tmp" | shasum -a 256 -c -
+    echo "$WAD_SHA256  $1" | shasum -a 256 -c - >/dev/null 2>&1
   fi
-  mv doom1.wad.tmp doom1.wad
+}
+if [ ! -f doom1.wad ]; then
+  for url in $WAD_URLS; do
+    echo "fetching shareware doom1.wad from $url..."
+    if curl -fsSL --retry 2 -o doom1.wad.tmp "$url" && wad_ok doom1.wad.tmp; then
+      mv doom1.wad.tmp doom1.wad
+      break
+    fi
+    rm -f doom1.wad.tmp
+  done
+  if [ ! -f doom1.wad ]; then
+    echo "error: could not fetch doom1.wad from any mirror" >&2
+    exit 1
+  fi
 fi
 
 make web web-doom
