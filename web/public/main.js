@@ -37,10 +37,12 @@
   // drawing is the bottleneck. The WebGL renderer is far faster on a real
   // GPU, but slower than DOM when WebGL is software-emulated (SwiftShader,
   // llvmpipe), so only use it when the GPU looks real.
+  let maxAtlasPages = 0; // the WebGL addon's atlas page limit on this GPU
   function hasHardwareWebgl() {
     try {
       const gl = document.createElement("canvas").getContext("webgl2");
       if (!gl) return false;
+      maxAtlasPages = Math.min(32, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) || 0);
       const info = gl.getExtension("WEBGL_debug_renderer_info");
       const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
       return !/swiftshader|llvmpipe|software|basic render/i.test(name);
@@ -49,13 +51,55 @@
     }
   }
 
+  // The WebGL addon caches one rasterized glyph per (char, fg, bg) in a
+  // texture atlas. The half-block pixel renderer bakes two truecolor pixels
+  // into every cell, so Doom (256 palette colors x 14 palettes) produces tens
+  // of thousands of distinct glyphs and fills atlas pages in seconds. When
+  // the page count reaches the GPU's limit (min(32, MAX_TEXTURE_IMAGE_UNITS),
+  // 16 on Apple GPUs) the addon merges pages into a larger texture, and after
+  // that merge glyphs from the merged page draw wrong -- scattered miscolored
+  // cells that no repaint fixes (xtermjs/xterm.js#4480, #4534). The diffing
+  // renderer never resends unchanged cells, so the garbage sticks.
+  //
+  // Workaround: count pages as the addon creates them and, just before the
+  // limit, replace the addon with a fresh one. xterm re-renders every cell
+  // from its own buffer, which is always correct, so the screen heals and the
+  // atlas starts empty. Deferred to a timeout so the swap never happens
+  // inside the addon's own render pass.
   let rendererName = "dom";
+  let webgl = null;
+  function loadWebgl() {
+    const addon = new WebglAddon.WebglAddon();
+    let pages = 0;
+    let recycling = false;
+    const recycle = () => {
+      if (recycling || addon !== webgl) return;
+      recycling = true;
+      setTimeout(() => {
+        if (addon !== webgl) return;
+        webgl = null;
+        addon.dispose();
+        try { loadWebgl(); } catch { rendererName = "dom"; }
+      }, 0);
+    };
+    addon.onAddTextureAtlasCanvas(() => {
+      pages++;
+      if (maxAtlasPages > 0 && pages >= Math.max(2, maxAtlasPages - 2)) recycle();
+    });
+    addon.onContextLoss(() => {
+      // Lost for good (GPU reset, tab backgrounded): fall back to DOM.
+      if (addon === webgl) webgl = null;
+      addon.dispose();
+      rendererName = "dom";
+      document.documentElement.dataset.renderer = rendererName;
+    });
+    term.loadAddon(addon);
+    webgl = addon;
+    rendererName = "webgl";
+  }
   if (window.WebglAddon && hasHardwareWebgl()) {
     try {
-      const webgl = new WebglAddon.WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose()); // falls back to DOM
-      term.loadAddon(webgl);
-      rendererName = "webgl";
+      loadWebgl();
     } catch {
       rendererName = "dom";
     }
