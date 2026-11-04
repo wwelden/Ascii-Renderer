@@ -10,7 +10,11 @@ cd "$ROOT"
 
 if ! command -v emcc >/dev/null 2>&1; then
   EMSDK_DIR="$ROOT/.emsdk"
-  if [ ! -d "$EMSDK_DIR" ]; then
+  # Test for the tool, not the directory: Vercel's build cache can restore a
+  # partial .emsdk/ (seen: directory present, emsdk script missing), and a
+  # bare -d check then skips the clone and fails at the install step.
+  if [ ! -x "$EMSDK_DIR/emsdk" ]; then
+    rm -rf "$EMSDK_DIR"
     git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$EMSDK_DIR"
   fi
   "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION"
