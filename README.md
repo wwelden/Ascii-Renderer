@@ -5,8 +5,8 @@
 # ASCII Renderer
 
 A terminal renderer in C, built up in phases toward running Doom in a terminal.
-Currently: a raw-mode terminal session with signal-safe cleanup, plus a small
-canvas library for drawing to a character grid.
+Phase 5 is here: `make doom` builds a doomgeneric port that plays Doom in the
+terminal at 35fps through the diffing half-block renderer.
 
 ## Requirements
 
@@ -37,6 +37,69 @@ The original terminal state is restored on any exit path — normal quit,
 ```bash
 ./build/ascii-renderer --gradient   # canvas demo: truecolor radial gradient
 ```
+
+## Doom (Phase 5)
+
+```bash
+make doom                            # builds build/ascii-doom
+./build/ascii-doom -iwad doom1.wad   # any Doom IWAD works; shareware doom1.wad is free
+```
+
+The port renders Doom's native 320×200 frame as half-block cells
+(320 columns × 100 rows), scaled to fit smaller terminals, paced at the
+engine's 35fps tic rate. The terminal is restored on every exit path.
+
+### Controls
+
+| Key | Action |
+| --- | --- |
+| `W` / `S` (or `↑` / `↓`) | Move forward / back |
+| `←` / `→` | Turn left / right |
+| `A` / `D` | Strafe left / right |
+| `F` | Fire (hold for continuous fire) |
+| `E` | Use: open doors, flip switches |
+| `1`–`7` | Select weapon |
+| `Tab` | Toggle automap |
+| `Esc` | Open / close the menu (pauses the game) |
+| `↑` / `↓` + `Enter` | Navigate and select in menus |
+| `Y` / `N` | Answer menu prompts (e.g. "quit game?") |
+| `Ctrl-C` | Force-quit immediately |
+
+There is no mouse support: the port reads keyboard bytes only, so aim by
+turning with the arrow keys. Your scroll wheel may also be sent as arrow
+keys in the alternate screen, which walks you forward or back, so leave it
+alone while playing.
+
+Why the layout differs from classic Doom: vanilla binds fire to Ctrl, strafe
+to Alt, and run to Shift, and a raw terminal can't report those modifiers on
+their own. Fire, use, and strafe move to `F`, `E`, and `A`/`D` instead, and
+there is no run key. Space does nothing. Cheat codes containing `w`, `a`,
+`s`, `d`, `e`, or `f` (e.g. `iddqd`) can't be typed because those letters
+are game controls.
+
+To start: `Esc` → New Game → pick an episode → pick a skill, each with
+`Enter`. Or skip the menus with `./build/ascii-doom -iwad doom1.wad -warp 1 1`.
+
+Design notes (Phase 5):
+
+- **The engine owns the loop.** doomgeneric inverts the phase 3 structure:
+  instead of our loop calling a `game_step()`, Doom calls our six `DG_*`
+  callbacks. The whole port is `src/doom/doomgeneric_ascii.c`; the renderer is
+  reused unmodified through the `render_frame()` API built in phase 4.
+- **Deferred session entry.** Raw mode + alternate screen are entered on the
+  *first frame*, not at startup, so the engine's boot log and fatal errors
+  (missing WAD, bad args) stay readable on the normal screen. Lesson learned:
+  the engine polls `DG_GetKey` before the first frame, so key reads must
+  report "no input" until the session is open — the tty is still canonical,
+  and a blocking `read()` there hangs the boot.
+- **Key-up synthesis.** A tty delivers key-down bytes only. Presses are
+  reported when a byte arrives; releases are synthesized once the key's byte
+  stream goes quiet. A freshly pressed key waits ~500ms (longer than the OS
+  initial autorepeat delay, or held keys stutter); once autorepeat is
+  flowing, ~150ms of silence means the key was let go, so held turns stop
+  close to where you release them. A byte that arrives after a gap too long
+  for autorepeat counts as a new tap, so quick repeated presses (menu
+  navigation, single shots) aren't swallowed.
 
 ## Running in the browser (WebAssembly)
 

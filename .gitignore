@@ -19,3 +19,8 @@ web/public/ascii-renderer.wasm
 .emsdk/
 web/smoke.png
 node_modules/
+
+# Doom runtime data (game assets and files the game writes at runtime)
+*.wad
+.savegame/
+default.cfg
