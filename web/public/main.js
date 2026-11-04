@@ -28,6 +28,37 @@
   term.open(document.getElementById("terminal"));
   fit.fit();
 
+  // Renderer choice. xterm's default DOM renderer builds a styled element per
+  // cell, which tops out around 10-15 fps on the plasma demo (every cell
+  // changes color every frame); parsing the ANSI is ~50x faster than that, so
+  // drawing is the bottleneck. The WebGL renderer is far faster on a real
+  // GPU, but slower than DOM when WebGL is software-emulated (SwiftShader,
+  // llvmpipe), so only use it when the GPU looks real.
+  function hasHardwareWebgl() {
+    try {
+      const gl = document.createElement("canvas").getContext("webgl2");
+      if (!gl) return false;
+      const info = gl.getExtension("WEBGL_debug_renderer_info");
+      const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+      return !/swiftshader|llvmpipe|software|basic render/i.test(name);
+    } catch {
+      return false;
+    }
+  }
+
+  let rendererName = "dom";
+  if (window.WebglAddon && hasHardwareWebgl()) {
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose()); // falls back to DOM
+      term.loadAddon(webgl);
+      rendererName = "webgl";
+    } catch {
+      rendererName = "dom";
+    }
+  }
+  document.documentElement.dataset.renderer = rendererName;
+
   // ---------------------------------------------------------------- programs
 
   const PROGRAMS = {

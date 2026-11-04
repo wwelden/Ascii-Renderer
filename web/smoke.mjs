@@ -72,8 +72,12 @@ try {
     running: (s) => (s.match(/▀/g) || []).length > 500,
     exited: (s) => /rendered \d+ frames/.test(s),
   });
-  const frames = Number(plasma.match(/rendered (\d+) frames/)[1]);
-  if (frames < 10) throw new Error(`plasma only rendered ${frames} frames`);
+  // CI has no GPU, so this only checks that plasma animates (more than one
+  // frame); the fps it prints is a software-rendering floor, not a target.
+  const [, frames, fps] = plasma.match(/rendered (\d+) frames in [\d.]+s = ([\d.]+) fps/);
+  if (Number(frames) < 2) throw new Error(`plasma did not animate (${frames} frame)`);
+  const renderer = await page.evaluate(() => document.documentElement.dataset.renderer);
+  console.log(`    plasma: ${frames} frames, ${fps} fps, ${renderer} renderer`);
 
   await run("./ascii-renderer --animate", {
     running: (s) => /frame \d+ +[\d.]+ fps/.test(s),
@@ -82,7 +86,7 @@ try {
 
   await page.screenshot({ path: "web/smoke.png" });
   if (errors.length) throw new Error("page errors:\n" + errors.join("\n"));
-  console.log(`smoke test passed (plasma: ${frames} frames)`);
+  console.log("smoke test passed");
 } catch (e) {
   console.error(e.message);
   await page.screenshot({ path: "web/smoke.png" }).catch(() => {});
