@@ -12,3 +12,10 @@ ascii-renderer
 .vscode/
 .idea/
 *.swp
+
+# WebAssembly build output (built by `make web` / on Vercel)
+web/public/ascii-renderer.js
+web/public/ascii-renderer.wasm
+.emsdk/
+web/smoke.png
+node_modules/

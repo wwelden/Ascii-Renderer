@@ -24,7 +24,7 @@ SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all run clean
+.PHONY: all run clean web serve
 
 all: $(BIN)
 
@@ -44,6 +44,26 @@ run: $(BIN)
 	./$(BIN)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(WEB_OUT) $(WEB_OUT:.js=.wasm)
+
+# --- WebAssembly build (needs Emscripten's emcc on PATH) ---
+# The browser has no tty, so src/term.c is swapped for web/term_web.c, which
+# implements the same term.h interface on top of hooks in web/public/main.js.
+# ASYNCIFY lets the existing blocking game loops yield to the browser inside
+# emscripten_sleep() instead of being rewritten as callbacks.
+EMCC     ?= emcc
+WEB_OUT  := web/public/ascii-renderer.js
+WEB_SRCS := web/term_web.c $(filter-out $(SRC_DIR)/term.c,$(SRCS))
+EMFLAGS  := -std=$(CSTD) -O2 -Iinclude -Ithird_party \
+            -sASYNCIFY -sMODULARIZE=1 -sEXPORT_NAME=createAsciiRenderer \
+            -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web
+
+web: $(WEB_OUT)
+
+$(WEB_OUT): $(WEB_SRCS) $(wildcard include/*.h)
+	$(EMCC) $(EMFLAGS) $(WEB_SRCS) -o $@ -lm
+
+serve: web
+	python3 -m http.server --directory web/public 8000
 
 -include $(DEPS)

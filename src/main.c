@@ -19,6 +19,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 /* --- Phase 0 milestone: enter raw mode, draw a border, exit cleanly. --- */
 
 #define KEY_CTRL_C 0x03
@@ -78,6 +82,23 @@ static void draw_frame(TermSize size) {
     fflush(stdout);
 }
 
+/* Sleep for `ns` nanoseconds. In the browser build this is also the point
+   where the program yields to the event loop (via Asyncify), which is what
+   lets output reach xterm.js and keystrokes arrive. It therefore always
+   yields, even for ns <= 0: a frame that runs late must still hand control
+   back, or the tab would freeze. */
+static void sleep_ns(long long ns) {
+#ifdef __EMSCRIPTEN__
+    emscripten_sleep(ns > 0 ? (unsigned)(ns / 1000000LL) : 0);
+#else
+    if (ns <= 0) {
+        return;
+    }
+    struct timespec ts = {(time_t)(ns / 1000000000LL), (long)(ns % 1000000000LL)};
+    nanosleep(&ts, NULL);
+#endif
+}
+
 static int run_border_demo(void) {
     if (term_init() == -1) {
         fprintf(stderr, "error: stdin/stdout must be a terminal\n");
@@ -100,8 +121,7 @@ static int run_border_demo(void) {
         }
         /* Reads are non-blocking, so idle here instead of spinning the CPU.
            ~15ms is a responsive poll for resize/quit without any real clock. */
-        struct timespec idle = {0, 15 * 1000000L};
-        nanosleep(&idle, NULL);
+        sleep_ns(15 * 1000000LL);
     }
 }
 
@@ -171,15 +191,10 @@ static int64_t now_ns(void) {
 }
 
 /* Sleep until `deadline` (a now_ns() value), so frames land ~1/TARGET_FPS
-   apart. If we are already past the deadline, return immediately. */
+   apart. If we are already past the deadline, return immediately (natively;
+   the browser build still yields, see sleep_ns). */
 static void sleep_until(int64_t deadline) {
-    int64_t remaining = deadline - now_ns();
-    if (remaining <= 0) {
-        return;
-    }
-    struct timespec ts = {(time_t)(remaining / NS_PER_SEC),
-                          (long)(remaining % NS_PER_SEC)};
-    nanosleep(&ts, NULL);
+    sleep_ns((long long)(deadline - now_ns()));
 }
 
 /* Write a plain (uncolored) string into the canvas starting at (x, y). */

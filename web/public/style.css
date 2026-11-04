@@ -1,0 +1,86 @@
+:root {
+  --bg: #0b0d10;
+  --panel: #12151a;
+  --fg: #d8dde3;
+  --muted: #8a939e;
+  --accent: #7ee787;
+  --border: #262b33;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  gap: 12px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--accent);
+}
+
+header p {
+  margin: 4px 0 10px;
+  color: var(--muted);
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button, nav a {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+button:hover, nav a:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; border-color: var(--border); }
+
+#terminal {
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+#touch-keys {
+  display: none;
+  justify-content: center;
+  gap: 8px;
+}
+
+#touch-keys button {
+  min-width: 48px;
+  min-height: 44px;
+  font-size: 18px;
+}
+
+@media (pointer: coarse) {
+  #touch-keys { display: flex; }
+}
