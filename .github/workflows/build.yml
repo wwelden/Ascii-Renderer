@@ -22,7 +22,7 @@ jobs:
       - name: Build WebAssembly site
         run: bash web/build.sh
       - name: Check output
-        run: ls -l web/public/ascii-renderer.js web/public/ascii-renderer.wasm
+        run: ls -l web/public/ascii-renderer.js web/public/ascii-renderer.wasm web/public/ascii-doom.js web/public/ascii-doom.wasm web/public/ascii-doom.data
       - uses: actions/setup-node@v4
         with:
           node-version: 22

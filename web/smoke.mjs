@@ -90,6 +90,20 @@ try {
     exited: (s) => /rendered \d+ frames[\s\S]*rendered \d+ frames/.test(s),
   });
 
+  // Doom is its own module and can't be driven by run(): 'q' is not a Doom
+  // key, Ctrl-C is the hard quit. The engine logs on the normal screen, then
+  // the first frame enters the alt screen; the title screen is art, not text,
+  // so assert on the volume of half-block cells. Exit is detected by the
+  // prompt's return, not frame stats — earlier demos' stats are back on the
+  // restored main screen and would match instantly.
+  await page.keyboard.type("doom");
+  await page.keyboard.press("Enter");
+  await waitForScreen((s) => (s.match(/▀/g) || []).length > 300, "doom to draw", 30000);
+  await page.waitForTimeout(1000);
+  await page.keyboard.press("Control+C");
+  await waitForScreen((s) => s.trimEnd().endsWith("guest@ascii-renderer:~$"), "doom to exit");
+  console.log("ok  doom");
+
   await page.screenshot({ path: "web/smoke.png" });
   if (errors.length) throw new Error("page errors:\n" + errors.join("\n"));
   console.log("smoke test passed");

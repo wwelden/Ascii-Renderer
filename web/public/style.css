@@ -72,6 +72,7 @@ button:disabled { opacity: 0.4; cursor: default; border-color: var(--border); }
 #touch-keys {
   display: none;
   justify-content: center;
+  flex-wrap: wrap; /* ten keys since doom; phones get two rows, not clipping */
   gap: 8px;
 }
 

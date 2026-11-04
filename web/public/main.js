@@ -64,7 +64,12 @@
 
   // ---------------------------------------------------------------- programs
 
+  // `factory` names the global Emscripten module factory; demos share one
+  // binary (createAsciiRenderer), doom is its own (createAsciiDoom, which
+  // also pulls in ascii-doom.data, the preloaded shareware IWAD).
   const PROGRAMS = {
+    doom:    { args: ["-iwad", "/doom1.wad"], factory: "createAsciiDoom",
+               about: "DOOM (1993, shareware) — arrows turn/move, wasd move/strafe, f fire, e use, Enter/Esc menus" },
     snake:   { args: ["--snake"],   about: "play snake (wasd / arrows, r restarts, q quits)" },
     plasma:  { args: ["--pixels"],  about: "full-screen truecolor plasma via render_frame() — the diff's worst case" },
     animate: { args: ["--animate"], about: "bouncing box over a gradient, with a live fps HUD" },
@@ -112,6 +117,12 @@
 
   function runProgram(name) {
     const prog = PROGRAMS[name];
+    const factory = window[prog.factory || "createAsciiRenderer"];
+    if (typeof factory !== "function") {
+      term.writeln(name + ": module not loaded (" + (prog.factory || "createAsciiRenderer") + " missing)");
+      term.write(PROMPT);
+      return;
+    }
     running = true;
     input = [];
     resized = false;
@@ -128,7 +139,7 @@
       term.focus();
     };
 
-    createAsciiRenderer({
+    factory({
       arguments: prog.args.slice(),
       stdin: () => null,
       stdout: pushOut,
@@ -191,7 +202,9 @@
       ].join("\n"),
     }),
     "README.md": f(9962, { render: "about" }),
+    "ascii-doom": { kind: "exec", size: 546862 },
     "ascii-renderer": { kind: "exec", size: 131072 },
+    "doom1.wad": src(4196020, "the shareware episode — what 'doom' boots, straight from 1993"),
     include: d({
       "canvas.h": src(2848, "text canvas: glyphs + colors over the framebuffer"),
       "framebuffer.h": src(1920, "double-buffered cell grid, diffed per frame"),
@@ -465,6 +478,15 @@
     // etc., which must not be dispatched as programs.
     if (Object.hasOwn(PROGRAMS, cmd)) { runProgram(cmd); return true; }
 
+    if (cmd === "ascii-doom" || cmd.split("/").pop() === "ascii-doom") {
+      if (cmd.includes("/") && (resolve(cmd).node || {}).kind !== "exec") {
+        term.writeln("fakesh: " + cmd + ": No such file or directory");
+        return false;
+      }
+      runProgram("doom");
+      return true;
+    }
+
     if (cmd === "ascii-renderer" || cmd.split("/").pop() === "ascii-renderer") {
       // Path invocations only work if the path actually leads to the binary.
       if (cmd.includes("/") && (resolve(cmd).node || {}).kind !== "exec") {
@@ -507,17 +529,12 @@
         break;
       case "make":
         if (rest[0] === "doom") {
-          term.writeln("make: 'doom' works in the native build — DOOM in a real terminal at 35fps.");
-          term.writeln("No shareware WAD ships in this browser tab. Clone the repo: " + GITHUB);
+          term.writeln("make: 'ascii-doom' is up to date. Just type \x1b[33mdoom\x1b[0m.");
         } else if (rest[0] === "clean") {
           term.writeln("make: refusing to clean — you are standing inside the build artifact.");
         } else {
           term.writeln("make: 'ascii-renderer' is up to date. (CI compiled it to wasm before you got here.)");
         }
-        break;
-      case "doom":
-        term.writeln("Phase 5 is real: \x1b[33mmake doom\x1b[0m plays DOOM in a native terminal through");
-        term.writeln("this renderer at 35fps. The browser build just needs you to bring a WAD.");
         break;
       case "git":
         if (rest[0] === "status") {

@@ -1,0 +1,4 @@
+build/
+.emsdk/
+doom1.wad
+*.wad

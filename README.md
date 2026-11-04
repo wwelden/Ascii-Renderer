@@ -112,6 +112,7 @@ as easter eggs.
 
 ```bash
 make web      # needs emcc on PATH; writes web/public/ascii-renderer.{js,wasm}
+make web-doom # Doom too: web/public/ascii-doom.{js,wasm,data} (needs doom1.wad)
 make serve    # http://localhost:8000
 ```
 
@@ -130,6 +131,11 @@ How it works:
   yield to the browser each frame.
 - stdout bytes go straight into `term.write()`; xterm.js handles the
   truecolor SGR and the `▀` half-blocks.
+- Doom is the same Phase 5 port (`src/doom/doomgeneric_ascii.c`) compiled
+  with the engine into its own module; the two `nanosleep` pacing sites gain
+  an `emscripten_sleep()` path, and the shareware `doom1.wad` is baked into
+  `ascii-doom.data` and mounted at `/doom1.wad` by Emscripten's preloaded FS.
+  `web/build.sh` downloads the WAD (pinned by SHA-256) when it's not on disk.
 
 ### Deploying to Vercel
 
