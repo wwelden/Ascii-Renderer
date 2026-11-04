@@ -49,6 +49,9 @@ make web      # needs emcc on PATH; writes web/public/ascii-renderer.{js,wasm}
 make serve    # http://localhost:8000
 ```
 
+`node web/smoke.mjs` (needs `playwright`) runs every demo in headless Chromium
+and checks it draws and exits; CI runs it on each push.
+
 Or `bash web/build.sh`, which installs a pinned Emscripten SDK into `.emsdk/`
 first if `emcc` is missing.
 
