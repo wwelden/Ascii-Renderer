@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASCII Renderer</title>
+  <meta name="description" content="A diffing ANSI terminal renderer written in C, compiled to WebAssembly and running in a browser terminal.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ascii-renderer</h1>
+      <p>A terminal renderer in C — double-buffered, diffing, zero-alloc hot loop —
+         compiled to WebAssembly and running in the terminal below.</p>
+      <nav aria-label="Demos">
+        <button data-cmd="snake">snake</button>
+        <button data-cmd="plasma">plasma</button>
+        <button data-cmd="animate">animate</button>
+        <button data-cmd="border">border</button>
+        <a href="https://github.com/wwelden/Ascii-Renderer" target="_blank" rel="noopener">source ↗</a>
+      </nav>
+    </header>
+
+    <div id="terminal" aria-label="Terminal"></div>
+
+    <div id="touch-keys" aria-label="On-screen keys">
+      <button data-key="&#x1b;[D" aria-label="Left">←</button>
+      <button data-key="&#x1b;[A" aria-label="Up">↑</button>
+      <button data-key="&#x1b;[B" aria-label="Down">↓</button>
+      <button data-key="&#x1b;[C" aria-label="Right">→</button>
+      <button data-key="r">r</button>
+      <button data-key="q">q</button>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+  <script src="ascii-renderer.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

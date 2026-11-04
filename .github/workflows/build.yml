@@ -1,0 +1,28 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug build (ASan/UBSan)
+        run: make
+      - name: Release build
+        run: make clean && make BUILD=release
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build WebAssembly site
+        run: bash web/build.sh
+      - name: Check output
+        run: ls -l web/public/ascii-renderer.js web/public/ascii-renderer.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-site
+          path: web/public

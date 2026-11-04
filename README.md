@@ -38,6 +38,36 @@ The original terminal state is restored on any exit path — normal quit,
 ./build/ascii-renderer --gradient   # canvas demo: truecolor radial gradient
 ```
 
+## Running in the browser (WebAssembly)
+
+The same C code compiles to WebAssembly with [Emscripten](https://emscripten.org)
+and runs inside an [xterm.js](https://xtermjs.org) terminal on a static page,
+with a small fake shell in front of it (`help`, `snake`, `plasma`, ...).
+
+```bash
+make web      # needs emcc on PATH; writes web/public/ascii-renderer.{js,wasm}
+make serve    # http://localhost:8000
+```
+
+Or `bash web/build.sh`, which installs a pinned Emscripten SDK into `.emsdk/`
+first if `emcc` is missing.
+
+How it works:
+
+- `web/term_web.c` replaces `src/term.c`, implementing `term.h` on hooks the
+  page provides (terminal size, resize flag, an input byte queue). Nothing
+  else in `src/` changes beyond one `#ifdef` in `sleep_ns()`.
+- The game loops stay as written: `-sASYNCIFY` lets `emscripten_sleep()`
+  yield to the browser each frame.
+- stdout bytes go straight into `term.write()`; xterm.js handles the
+  truecolor SGR and the `▀` half-blocks.
+
+### Deploying to Vercel
+
+Import the repo in Vercel; `vercel.json` takes care of the rest (build
+command `bash web/build.sh`, output directory `web/public`, no framework).
+The first build spends a minute or two installing the Emscripten SDK.
+
 ## Cleaning
 
 ```bash
@@ -55,6 +85,11 @@ make clean
 │   ├── canvas.c    # canvas / drawing primitives
 │   ├── term.c      # terminal lifecycle: raw mode, alt screen, resize, cleanup
 │   └── main.c      # entry point: border milestone + --gradient demo
+├── web/
+│   ├── term_web.c  # term.h for the browser (replaces src/term.c)
+│   ├── build.sh    # Vercel / local build script for the wasm site
+│   └── public/     # static site: index.html, main.js (xterm.js host), style.css
+├── vercel.json
 ├── Makefile
 └── README.md
 ```
