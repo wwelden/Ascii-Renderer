@@ -17,3 +17,5 @@ ascii-renderer
 web/public/ascii-renderer.js
 web/public/ascii-renderer.wasm
 .emsdk/
+web/smoke.png
+node_modules/

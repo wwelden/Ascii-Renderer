@@ -22,7 +22,19 @@ jobs:
         run: bash web/build.sh
       - name: Check output
         run: ls -l web/public/ascii-renderer.js web/public/ascii-renderer.wasm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.48.2
+          npx playwright install --with-deps chromium
+      - name: Browser smoke test (runs every demo in headless Chromium)
+        run: node web/smoke.mjs
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: web-site
-          path: web/public
+          path: |
+            web/public
+            web/smoke.png
