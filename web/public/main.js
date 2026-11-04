@@ -186,12 +186,13 @@
     if (parts.length === 0) return false;
     const [cmd, ...rest] = parts;
 
-    if (PROGRAMS[cmd]) { runProgram(cmd); return true; }
+    // Own-property checks: plain objects inherit "constructor", "toString",
+    // etc., which must not be dispatched as programs.
+    if (Object.hasOwn(PROGRAMS, cmd)) { runProgram(cmd); return true; }
 
     if (cmd === "./ascii-renderer" || cmd === "ascii-renderer") {
       const flag = rest[0] || "";
-      const name = FLAG_TO_PROGRAM[flag];
-      if (name) { runProgram(name); return true; }
+      if (Object.hasOwn(FLAG_TO_PROGRAM, flag)) { runProgram(FLAG_TO_PROGRAM[flag]); return true; }
       term.writeln("ascii-renderer: '" + flag + "' is not available in the browser build");
       term.writeln("try: --snake, --pixels, --animate, or no flag");
       return false;

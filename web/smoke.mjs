@@ -58,6 +58,12 @@ try {
   await waitForScreen((s) => s.includes("guest@ascii-renderer"), "prompt");
   await page.click("#terminal");
 
+  // Names inherited from Object.prototype must not dispatch as programs.
+  await page.keyboard.type("constructor");
+  await page.keyboard.press("Enter");
+  await waitForScreen((s) => s.includes("constructor: command not found"), "unknown-command error");
+  console.log("ok  constructor (rejected)");
+
   await run("border", {
     running: (s) => s.includes("ascii-renderer / phase 0"),
     exited: (s) => s.trimEnd().endsWith("guest@ascii-renderer:~$"),
