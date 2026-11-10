@@ -29,7 +29,8 @@ typedef struct {
 
 /* Create a length-3 snake centered in a width x height field, heading right,
    with food placed. `seed` seeds food placement. Returns NULL on allocation
-   failure or if the field is too small (< 4 wide, < 1 tall). */
+   failure, if the field is too small (< 4 wide, < 1 tall), or if its capacity
+   cannot be represented by the state or allocation size. */
 Snake *snake_create(int width, int height, unsigned seed);
 
 /* Free a snake created by snake_create. Safe to call with NULL. */
@@ -40,7 +41,8 @@ void snake_destroy(Snake *s);
 void snake_turn(Snake *s, Direction dir);
 
 /* Advance one tick: move (and possibly grow) the snake, or mark it dead on a
-   wall or self collision. No-op once dead. */
+   wall or self collision. Filling the entire board also ends the game
+   (alive = 0), preserving the final body and score. No-op once ended. */
 void snake_step(Snake *s);
 
 #endif /* ASCII_RENDERER_SNAKE_H */

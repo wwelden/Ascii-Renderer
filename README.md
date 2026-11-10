@@ -22,6 +22,27 @@ make BUILD=release   # optimized build, no sanitizers
 
 The binary is written to `build/ascii-renderer`.
 
+## Testing
+
+```bash
+make test                 # C unit tests with AddressSanitizer and UBSan
+make test BUILD=release   # optimized tests; checks stay enabled with NDEBUG
+```
+
+The tests need only the C compiler and `make`; they do not require Bun/Node,
+Emscripten, a terminal session, or a Doom WAD. They cover canvas drawing and
+color output, framebuffer loading/scaling and half-block output, renderer
+diffing and resizing, Snake movement/collisions/growth, and terminal helpers
+with redirected input/output. Debug and release test artifacts are stored
+separately under `build/tests/`. A failed check exits nonzero and reports its
+file, line, and expression.
+
+GitHub Actions builds the native app and runs these unit tests on Linux and
+macOS, in debug and release mode, on every push and pull request. The existing
+WebAssembly build and browser smoke tests also run on every push and pull
+request. Unit tests cover the reusable C modules; interactive demos and the
+vendored Doom engine are exercised by the browser smoke suite.
+
 ## Running
 
 ```bash

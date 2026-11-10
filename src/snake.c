@@ -1,5 +1,7 @@
 #include "snake.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 /* --- Small helpers used by the step logic --- */
@@ -32,15 +34,15 @@ static int snake_hits_body(const Snake *s, Point p) {
     return 0;
 }
 
-/* Insert `head` at the front of the body, shifting every segment down by one
-   and growing length by one. A non-growing move drops the tail again afterward
-   by decrementing length. */
-static void snake_prepend(Snake *s, Point head) {
-    for (int i = s->length; i > 0; --i) {
+/* Shift only live segments: a normal move drops the old tail without writing
+   a temporary extra segment beyond the allocated capacity. */
+static void snake_advance(Snake *s, Point head, int grow) {
+    int last = s->length - 1 + grow;
+    for (int i = last; i > 0; --i) {
         s->body[i] = s->body[i - 1];
     }
     s->body[0] = head;
-    s->length += 1;
+    s->length += grow;
 }
 
 /* Drop food on a random cell that the snake does not currently occupy. */
@@ -70,7 +72,8 @@ static int is_opposite(Direction a, Direction b) {
 /* --- Public API --- */
 
 Snake *snake_create(int width, int height, unsigned seed) {
-    if (width < 4 || height < 1) {
+    if (width < 4 || height < 1 || width > INT_MAX / height ||
+        (size_t)width * (size_t)height > SIZE_MAX / sizeof(Point)) {
         return NULL;
     }
     Snake *s = calloc(1, sizeof(*s));
@@ -138,36 +141,21 @@ void snake_step(Snake *s) {
         case DIR_RIGHT: head.x += 1; break;
     }
 
-    /* TODO(human): resolve the move onto `head`.
-
-       Decide, in this order, what happens now that the head wants to enter
-       `head`, using the helpers above and the snake's public fields:
-
-         1. Death first. If snake_hits_wall(s, head) OR snake_hits_body(s, head),
-            the snake dies: set s->alive = 0 and return, leaving the body as-is
-            so the caller can draw a game-over screen.
-         2. Otherwise the snake advances. Remember whether `head` is the food
-            cell (point_eq(head, s->food)) BEFORE you move, then insert the new
-            head with snake_prepend(s, head).
-         3. If it ate the food, it grows: bump s->score and drop new food with
-            snake_place_food(s) (the prepend already kept the extra length).
-            If it did NOT eat, it just moved: undo the growth by decrementing
-            s->length so the tail is dropped and the length stays constant.
-
-       Order matters: check death BEFORE moving; check food AFTER prepending. */
-       if ( snake_hits_wall(s, head) || snake_hits_body(s, head)){
+    if (snake_hits_wall(s, head) || snake_hits_body(s, head)) {
         s->alive = 0;
         return;
-       }
+    }
 
-       int ate = point_eq(head, s->food);
-
-       snake_prepend(s, head);
-
-        if (ate){
-            s->score +=1;
+    int ate = point_eq(head, s->food);
+    snake_advance(s, head, ate);
+    if (ate) {
+        s->score += 1;
+        if (s->length == s->capacity) {
+            /* No empty cell remains. Finish with the complete body visible
+               instead of searching forever for a place to put food. */
+            s->alive = 0;
+        } else {
             snake_place_food(s);
-        }else{
-            s->length -= 1;
         }
+    }
 }
