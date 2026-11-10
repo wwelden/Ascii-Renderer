@@ -2,21 +2,31 @@ name: build
 
 on:
   push:
-    branches: [master]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   native:
-    runs-on: ubuntu-latest
+    name: Native tests (${{ matrix.os }}, ${{ matrix.build }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build: [debug, release]
     steps:
       - uses: actions/checkout@v4
-      - name: Debug build (ASan/UBSan)
-        run: make
-      - name: Release build
-        run: make clean && make BUILD=release
+      - name: Build and run unit tests
+        run: make -j2 BUILD=${{ matrix.build }} all test
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build WebAssembly site

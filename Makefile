@@ -24,7 +24,7 @@ SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all run clean web web-doom serve doom
+.PHONY: all run test clean web web-doom serve doom
 
 all: $(BIN)
 
@@ -42,6 +42,43 @@ $(BUILD_DIR):
 
 run: $(BIN)
 	./$(BIN)
+
+# --- Native unit tests: no terminal, game assets, or external test framework ---
+# Keep debug/release test objects separate so switching BUILD cannot reuse a
+# binary compiled with different sanitizer or NDEBUG settings.
+TEST_BUILD := $(BUILD_DIR)/tests/$(BUILD)
+TEST_NAMES := canvas framebuffer render snake term
+TEST_BINS  := $(addprefix $(TEST_BUILD)/test_,$(TEST_NAMES))
+TEST_OBJS  := $(addsuffix .o,$(TEST_BINS)) \
+              $(addprefix $(TEST_BUILD)/,canvas.o framebuffer.o render.o \
+                  snake.o term.o stb_image_impl.o)
+
+test: $(TEST_BINS)
+	@set -e; for test in $(TEST_BINS); do "$$test"; done
+
+$(TEST_BUILD)/test_canvas: $(TEST_BUILD)/test_canvas.o $(TEST_BUILD)/canvas.o
+$(TEST_BUILD)/test_framebuffer: $(TEST_BUILD)/test_framebuffer.o \
+    $(TEST_BUILD)/framebuffer.o $(TEST_BUILD)/canvas.o $(TEST_BUILD)/stb_image_impl.o
+$(TEST_BUILD)/test_render: $(TEST_BUILD)/test_render.o $(TEST_BUILD)/render.o \
+    $(TEST_BUILD)/canvas.o $(TEST_BUILD)/framebuffer.o $(TEST_BUILD)/stb_image_impl.o
+$(TEST_BUILD)/test_snake: $(TEST_BUILD)/test_snake.o $(TEST_BUILD)/snake.o
+$(TEST_BUILD)/test_term: $(TEST_BUILD)/test_term.o $(TEST_BUILD)/term.o
+
+$(TEST_BINS):
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
+
+$(TEST_BUILD)/test_%.o: tests/test_%.c | $(TEST_BUILD)
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(TEST_BUILD)/%.o: $(SRC_DIR)/%.c | $(TEST_BUILD)
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(TEST_BUILD)/stb_image_impl.o: CFLAGS := $(filter-out -Wall -Wextra -Wpedantic,$(CFLAGS)) -w
+
+$(TEST_BUILD):
+	mkdir -p $(TEST_BUILD)
+
+-include $(TEST_OBJS:.o=.d)
 
 clean:
 	rm -rf $(BUILD_DIR) $(WEB_OUT) $(WEB_OUT:.js=.wasm) \
