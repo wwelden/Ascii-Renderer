@@ -2,6 +2,8 @@
 
 
 
+<img src="web/public/favicon.svg" width="64" height="64" alt="">
+
 # ASCII Renderer
 
 A terminal renderer in C, built up in phases toward running Doom in a terminal.
